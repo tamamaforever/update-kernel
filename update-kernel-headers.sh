@@ -242,11 +242,10 @@ update_kernel() {
             yum -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
         fi
         [ ! -f "/etc/yum.repos.d/elrepo.repo" ] && red "Install elrepo failed, please check it and retry." && exit 1
-        yum --enablerepo=elrepo-kernel
         if version_ge $systemVersion 8; then
-            yum -y install kernel-ml-headers kernel-ml kernel-ml-core kernel-ml-devel
+            yum -y --enablerepo=elrepo-kernel install kernel-ml-headers kernel-ml kernel-ml-core kernel-ml-devel
         else
-            yum -y install kernel-ml-headers kernel-ml kernel-ml-devel
+            yum -y --enablerepo=elrepo-kernel install kernel-ml-headers kernel-ml kernel-ml-devel
         fi
         if [ $? -ne 0 ]; then
             red "Error: Install latest kernel failed, please check it."
