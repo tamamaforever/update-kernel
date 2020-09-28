@@ -94,8 +94,6 @@ elif lsb_release -a 2>/dev/null | grep -qi "centos"; then
     release="centos"
 elif command -v yum > /dev/null 2>&1 && ! command -v apt > /dev/null 2>&1; then
     release="other-redhat"
-    red "不支持的系统！！"
-    exit 1
 else
     red "不支持的系统！！"
     exit 1
@@ -119,7 +117,7 @@ version_ge(){
 
 failed_version()
 {
-    if [[ `getconf WORD_BIT` == "32" && `getconf LONG_BIT` == "64" ]]; then
+    if is_64bit; then
         deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
     else
         deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
@@ -202,7 +200,7 @@ get_latest_version() {
     done
     kernel=${kernel_list[i]}
 
-    if [[ `getconf WORD_BIT` == "32" && `getconf LONG_BIT` == "64" ]]; then
+    if is_64bit; then
         headers_all_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "all" | awk -F'\">' '/.deb/{print $2}' | cut -d'<' -f1 | head -1)
         deb_kernel_headers_all_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_all_deb_name}"
         headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
@@ -223,14 +221,12 @@ get_latest_version() {
     fi
 }
 
-
-
 update_kernel() {
-    if [ ${release} == "centos" ]; then
-        kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
-        kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
-        kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
-        kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
+    if [ ${release} == "centos" ] || [ ${release} == "other-redhat" ]; then
+        #kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
+        #kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
+        #kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
+        #kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
         if ! version_ge $systemVersion 7; then
             red "仅支持Centos 7+"
             exit 1
@@ -243,7 +239,7 @@ update_kernel() {
         fi
         [ ! -f "/etc/yum.repos.d/elrepo.repo" ] && red "Install elrepo failed, please check it and retry." && exit 1
         if version_ge $systemVersion 8; then
-            yum -y --enablerepo=elrepo-kernel install kernel-ml kernel-ml-core kernel-ml-devel
+            yum -y --enablerepo=elrepo-kernel install kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
         else
             yum -y --enablerepo=elrepo-kernel install kernel-ml kernel-ml-devel
         fi
@@ -251,6 +247,8 @@ update_kernel() {
             red "Error: Install latest kernel failed, please check it."
             exit 1
         fi
+        #[ ! -f "/boot/grub2/grub.cfg" ] && red "/boot/grub2/grub.cfg not found, please check it."
+        #grub2-set-default 0
     else
         ! command -v wget > /dev/null 2>&1 && ! apt -y install wget && apt update && apt -y install wget
         get_latest_version
@@ -356,16 +354,18 @@ remove_kernel()
             red "内核可能安装失败！不卸载"
             return 1
         fi
-        if [ ${#kernel_list_headers[@]} -eq 0 ] && [ ${#kernel_list_image[@]} -eq 0 ] && [ ${#kernel_list_modules[@]} -eq 0 ]; then
-            echo "未发现可卸载内核！不卸载"
-            return 1
+        if [ ${#kernel_list_image[@]} -eq 0 ] && [ ${#kernel_list_modules[@]} -eq 0 ]; then
+            if ([ $install_header -eq 1 ] && [ ${#kernel_list_headers[@]} -eq 0 ]) || [ $install_header -eq 0 ]; then
+                red "未发现可卸载内核！不卸载"
+                return 1
+            fi
         fi
         yellow "卸载过程中弹出对话框，请选择NO！"
         yellow "卸载过程中弹出对话框，请选择NO！"
         yellow "卸载过程中弹出对话框，请选择NO！"
-        echo "按回车键继续。。"
+        tyblue "按回车键继续。。"
         read -s
-        if [ "$flag" == "1" ]; then
+        if [ "$install_header" == "1" ]; then
             apt -y purge ${kernel_list_headers[@]} ${kernel_list_image[@]} ${kernel_list_modules[@]}
         else
             apt -y purge ${kernel_list_image[@]} ${kernel_list_modules[@]}
