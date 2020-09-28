@@ -1,13 +1,12 @@
 #!/bin/bash
+# This script is changed from https://github.com/teddysun/across/blob/master/bbr.sh
+# 本脚本改编自：https://github.com/teddysun/across/blob/master/bbr.sh
 #
 # Auto install latest kernel for TCP BBR
 #
 # System Required:  CentOS 7+, Debian7+, Ubuntu12+
 #
 # Copyright (C) 2016-2018 Teddysun <i@teddysun.com>
-#
-# URL: 
-#
 
 tyblue()                           #天依蓝
 {
@@ -223,10 +222,12 @@ get_latest_version() {
 
 update_kernel() {
     if [ ${release} == "centos" ] || [ ${release} == "other-redhat" ]; then
-        #kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
-        #kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
-        #kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
-        #kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
+        kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
+        kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
+        if version_ge $systemVersion 8; then
+            kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
+            kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
+        fi
         if ! version_ge $systemVersion 7; then
             red "仅支持Centos 7+"
             exit 1
@@ -277,8 +278,8 @@ update_kernel() {
         cd ..
         rm -rf kernel_
         apt -y -f install
-        remove_kernel
     fi
+    remove_kernel
     reboot_os
 }
 
@@ -354,11 +355,9 @@ remove_kernel()
             red "内核可能安装失败！不卸载"
             return 1
         fi
-        if [ ${#kernel_list_image[@]} -eq 0 ] && [ ${#kernel_list_modules[@]} -eq 0 ]; then
-            if ([ $install_header -eq 1 ] && [ ${#kernel_list_headers[@]} -eq 0 ]) || [ $install_header -eq 0 ]; then
-                red "未发现可卸载内核！不卸载"
-                return 1
-            fi
+        if [ ${#kernel_list_image[@]} -eq 0 ] && [ ${#kernel_list_modules[@]} -eq 0 ] && ([ $install_header -eq 0 ] || [ ${#kernel_list_headers[@]} -eq 0 ]); then
+            red "未发现可卸载内核！不卸载"
+            return 1
         fi
         yellow "卸载过程中弹出对话框，请选择NO！"
         yellow "卸载过程中弹出对话框，请选择NO！"
@@ -373,14 +372,20 @@ remove_kernel()
         apt -y -f install
     else
         local kernel_list=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
-        local kernel_list_modules=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
-        local kernel_list_core=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
         local kernel_list_devel=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ]; then
-            red "未发现可卸载内核！不卸载"
+        if version_ge $systemVersion 8; then
+            local kernel_list_modules=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
+            local kernel_list_core=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
+        fi
+        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ] || (version_ge $systemVersion 8 && ([ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ])); then
+            red "内核可能未安装！不卸载"
             return 1
         fi
-        rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_modules_first[@]} ${kernel_list_core_first[@]} ${kernel_list_devel_first[@]}
+        if version_ge $systemVersion 8; then
+            rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_devel_first[@]} ${kernel_list_modules_first[@]} ${kernel_list_core_first[@]}
+        else
+            rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_devel_first[@]}
+        fi
     fi
     green '卸载完成'
 }
@@ -418,7 +423,7 @@ echo " Kernel  : $(uname -r)"
 echo "----------------------------------------"
 echo " Auto install latest kernel"
 echo
-echo " URL: "
+echo " URL: https://github.com/kirin10000/update-kernel"
 echo "----------------------------------------"
 echo "Press any key to start...or Press Ctrl+C to cancel"
 get_char
