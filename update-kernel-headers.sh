@@ -1,13 +1,12 @@
 #!/bin/bash
+# This script is changed from https://github.com/teddysun/across/blob/master/bbr.sh
+# 本脚本改编自：https://github.com/teddysun/across/blob/master/bbr.sh
 #
 # Auto install latest kernel for TCP BBR
 #
 # System Required:  CentOS 7+, Debian7+, Ubuntu12+
 #
 # Copyright (C) 2016-2018 Teddysun <i@teddysun.com>
-#
-# URL: 
-#
 
 tyblue()                           #天依蓝
 {
@@ -45,7 +44,7 @@ check_important_dependence_installed()
         fi
     else
         if ! rpm -q $2 2>&1 >/dev/null; then
-            if ! yum -y install $2; then
+            if ! $redhat_package_manager -y install $2; then
                 yellow "重要组件安装失败！！"
                 red "不支持的系统！！"
                 exit 1
@@ -53,33 +52,23 @@ check_important_dependence_installed()
         fi
     fi
 }
-if command -v apt > /dev/null 2>&1 && command -v yum > /dev/null 2>&1; then
-    red "apt与yum同时存在，请卸载掉其中一个"
-    choice=""
-    while [[ "$choice" != "y" && "$choice" != "n" ]]
-    do
-        tyblue "自动卸载？(y/n)"
-        read choice
-    done
-    if [ $choice == y ]; then
-        apt -y purge yum
-        yum -y remove apt
-        if command -v apt > /dev/null 2>&1 && command -v yum > /dev/null 2>&1; then
-            yellow "卸载失败！！"
-            red "不支持的系统！！"
-            exit 1
-        fi
-    else
-        exit 0
+if [[ "$(type -P apt)" ]]; then
+    if [[ "$(type -P dnf)" ]] || [[ "$(type -P yum)" ]]; then
+        red "同时存在apt和yum/dnf"
+        red "不支持的系统！"
+        exit 1
     fi
-fi
-if ! command -v apt > /dev/null 2>&1 && ! command -v yum > /dev/null 2>&1; then
-    red "不支持的系统或apt/yum缺失"
-    exit 1
-elif command -v apt > /dev/null 2>&1 && ! command -v yum > /dev/null 2>&1; then
     release="other-debian"
-elif command -v yum > /dev/null 2>&1 && ! command -v apt > /dev/null 2>&1; then
+    redhat_package_manager="true"
+elif [[ "$(type -P dnf)" ]]; then
     release="other-redhat"
+    redhat_package_manager="dnf"
+elif [[ "$(type -P yum)" ]]; then
+    release="other-redhat"
+    redhat_package_manager="yum"
+else
+    red "不支持的系统或apt/yum/dnf缺失"
+    exit 1
 fi
 check_important_dependence_installed lsb-release redhat-lsb-core
 if lsb_release -a 2>/dev/null | grep -qi "ubuntu"; then
@@ -88,21 +77,26 @@ elif lsb_release -a 2>/dev/null | grep -qi "debian"; then
     release="debian"
 elif lsb_release -a 2>/dev/null | grep -qi "deepin"; then
     release="deepin"
-elif command -v apt > /dev/null 2>&1 && ! command -v yum > /dev/null 2>&1; then
-    release="other-debian"
 elif lsb_release -a 2>/dev/null | grep -qi "centos"; then
     release="centos"
-elif command -v yum > /dev/null 2>&1 && ! command -v apt > /dev/null 2>&1; then
-    release="other-redhat"
-    red "不支持的系统！！"
-    exit 1
-else
-    red "不支持的系统！！"
-    exit 1
+elif lsb_release -a 2>/dev/null | grep -qi "fedora"; then
+    release="fedora"
 fi
 check_important_dependence_installed ca-certificates ca-certificates
-
 systemVersion=`lsb_release -r -s`
+if [ $release == "fedora" ]; then
+    if version_ge $systemVersion 28; then
+        redhat_version=8
+    elif version_ge $systemVersion 19; then
+        redhat_version=7
+    elif version_ge $systemVersion 12; then
+        redhat_version=6
+    else
+        redhat_version=5
+    fi
+else
+    redhat_version=$systemVersion
+fi
 install_header=0
 
 is_64bit(){
@@ -119,7 +113,7 @@ version_ge(){
 
 failed_version()
 {
-    if [[ `getconf WORD_BIT` == "32" && `getconf LONG_BIT` == "64" ]]; then
+    if is_64bit; then
         deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
     else
         deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
@@ -202,7 +196,7 @@ get_latest_version() {
     done
     kernel=${kernel_list[i]}
 
-    if [[ `getconf WORD_BIT` == "32" && `getconf LONG_BIT` == "64" ]]; then
+    if is_64bit; then
         headers_all_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "all" | awk -F'\">' '/.deb/{print $2}' | cut -d'<' -f1 | head -1)
         deb_kernel_headers_all_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_all_deb_name}"
         headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
@@ -223,34 +217,41 @@ get_latest_version() {
     fi
 }
 
-
-
 update_kernel() {
-    if [ ${release} == "centos" ]; then
+    if [ ${release} == "centos" ] || [ ${release} == "other-redhat" ]; then
         kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
-        kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
-        kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
         kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if ! version_ge $systemVersion 7; then
-            red "仅支持Centos 7+"
+        if version_ge $redhat_version 8; then
+            kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
+            kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
+        fi
+        if ! version_ge $redhat_version 7; then
+            red "仅支持Redhat 7+ (CentOS 7+)"
             exit 1
         fi
         rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
-        if version_ge $systemVersion 8; then
-            yum -y install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
+        if version_ge $redhat_version 8; then
+            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
         else
-            yum -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
+            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
         fi
         [ ! -f "/etc/yum.repos.d/elrepo.repo" ] && red "Install elrepo failed, please check it and retry." && exit 1
-        if version_ge $systemVersion 8; then
-            yum -y --enablerepo=elrepo-kernel install kernel-ml-headers kernel-ml kernel-ml-core kernel-ml-devel
+        if $redhat_package_manager --help | grep -q "\-\-enablerepo="; then
+            local redhat_install_command="$redhat_package_manager -y --enablerepo=elrepo-kernel install"
         else
-            yum -y --enablerepo=elrepo-kernel install kernel-ml-headers kernel-ml kernel-ml-devel
+            local redhat_install_command="$redhat_package_manager -y --enablerepo elrepo-kernel install"
+        fi
+        if version_ge $redhat_version 8; then
+            $redhat_install_command kernel-ml-headers kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
+        else
+            $redhat_install_command kernel-ml-headers kernel-ml kernel-ml-devel
         fi
         if [ $? -ne 0 ]; then
             red "Error: Install latest kernel failed, please check it."
             exit 1
         fi
+        #[ ! -f "/boot/grub2/grub.cfg" ] && red "/boot/grub2/grub.cfg not found, please check it."
+        #grub2-set-default 0
     else
         ! command -v wget > /dev/null 2>&1 && ! apt -y install wget && apt update && apt -y install wget
         get_latest_version
@@ -279,8 +280,8 @@ update_kernel() {
         cd ..
         rm -rf kernel_
         apt -y -f install
-        remove_kernel
     fi
+    remove_kernel
     reboot_os
 }
 
@@ -356,16 +357,16 @@ remove_kernel()
             red "内核可能安装失败！不卸载"
             return 1
         fi
-        if [ ${#kernel_list_headers[@]} -eq 0 ] && [ ${#kernel_list_image[@]} -eq 0 ] && [ ${#kernel_list_modules[@]} -eq 0 ]; then
-            echo "未发现可卸载内核！不卸载"
+        if [ ${#kernel_list_image[@]} -eq 0 ] && [ ${#kernel_list_modules[@]} -eq 0 ] && ([ $install_header -eq 0 ] || [ ${#kernel_list_headers[@]} -eq 0 ]); then
+            red "未发现可卸载内核！不卸载"
             return 1
         fi
         yellow "卸载过程中弹出对话框，请选择NO！"
         yellow "卸载过程中弹出对话框，请选择NO！"
         yellow "卸载过程中弹出对话框，请选择NO！"
-        echo "按回车键继续。。"
+        tyblue "按回车键继续。。"
         read -s
-        if [ "$flag" == "1" ]; then
+        if [ "$install_header" == "1" ]; then
             apt -y purge ${kernel_list_headers[@]} ${kernel_list_image[@]} ${kernel_list_modules[@]}
         else
             apt -y purge ${kernel_list_image[@]} ${kernel_list_modules[@]}
@@ -373,14 +374,20 @@ remove_kernel()
         apt -y -f install
     else
         local kernel_list=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
-        local kernel_list_modules=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
-        local kernel_list_core=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
         local kernel_list_devel=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ]; then
-            red "未发现可卸载内核！不卸载"
+        if version_ge $redhat_version 8; then
+            local kernel_list_modules=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
+            local kernel_list_core=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
+        fi
+        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ] || (version_ge $redhat_version 8 && ([ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ])); then
+            red "内核可能未安装！不卸载"
             return 1
         fi
-        rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_modules_first[@]} ${kernel_list_core_first[@]} ${kernel_list_devel_first[@]}
+        if version_ge $redhat_version 8; then
+            rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_devel_first[@]} ${kernel_list_modules_first[@]} ${kernel_list_core_first[@]}
+        else
+            rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_devel_first[@]}
+        fi
     fi
     green '卸载完成'
 }
@@ -418,7 +425,7 @@ echo " Kernel  : $(uname -r)"
 echo "----------------------------------------"
 echo " Auto install latest kernel"
 echo
-echo " URL: "
+echo " URL: https://github.com/kirin10000/update-kernel"
 echo "----------------------------------------"
 echo "Press any key to start...or Press Ctrl+C to cancel"
 get_char
