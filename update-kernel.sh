@@ -218,7 +218,7 @@ get_latest_version() {
 }
 
 update_kernel() {
-    if [ ${release} == "centos" ] || [ ${release} == "other-redhat" ]; then
+    if [ ${release} == "centos" ] || [ ${release} == "fedora" ] || [ ${release} == "other-redhat" ]; then
         kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
         kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
         if version_ge $redhat_version 8; then
