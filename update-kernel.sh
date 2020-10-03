@@ -44,7 +44,7 @@ check_important_dependence_installed()
         fi
     else
         if ! rpm -q $2 2>&1 >/dev/null; then
-            if ! yum -y install $2; then
+            if ! $redhat_package_manager -y install $2; then
                 yellow "重要组件安装失败！！"
                 red "不支持的系统！！"
                 exit 1
@@ -52,33 +52,23 @@ check_important_dependence_installed()
         fi
     fi
 }
-if command -v apt > /dev/null 2>&1 && command -v yum > /dev/null 2>&1; then
-    red "apt与yum同时存在，请卸载掉其中一个"
-    choice=""
-    while [[ "$choice" != "y" && "$choice" != "n" ]]
-    do
-        tyblue "自动卸载？(y/n)"
-        read choice
-    done
-    if [ $choice == y ]; then
-        apt -y purge yum
-        yum -y remove apt
-        if command -v apt > /dev/null 2>&1 && command -v yum > /dev/null 2>&1; then
-            yellow "卸载失败！！"
-            red "不支持的系统！！"
-            exit 1
-        fi
-    else
-        exit 0
+if [[ "$(type -P apt)" ]]; then
+    if [[ "$(type -P dnf)" ]] || [[ "$(type -P yum)" ]]; then
+        red "同时存在apt和yum/dnf"
+        red "不支持的系统！"
+        exit 1
     fi
-fi
-if ! command -v apt > /dev/null 2>&1 && ! command -v yum > /dev/null 2>&1; then
-    red "不支持的系统或apt/yum缺失"
-    exit 1
-elif command -v apt > /dev/null 2>&1 && ! command -v yum > /dev/null 2>&1; then
     release="other-debian"
-elif command -v yum > /dev/null 2>&1 && ! command -v apt > /dev/null 2>&1; then
+    redhat_package_manager="true"
+elif [[ "$(type -P dnf)" ]]; then
     release="other-redhat"
+    redhat_package_manager="dnf"
+elif [[ "$(type -P yum)" ]]; then
+    release="other-redhat"
+    redhat_package_manager="yum"
+else
+    red "不支持的系统或apt/yum/dnf缺失"
+    exit 1
 fi
 check_important_dependence_installed lsb-release redhat-lsb-core
 if lsb_release -a 2>/dev/null | grep -qi "ubuntu"; then
@@ -87,19 +77,26 @@ elif lsb_release -a 2>/dev/null | grep -qi "debian"; then
     release="debian"
 elif lsb_release -a 2>/dev/null | grep -qi "deepin"; then
     release="deepin"
-elif command -v apt > /dev/null 2>&1 && ! command -v yum > /dev/null 2>&1; then
-    release="other-debian"
 elif lsb_release -a 2>/dev/null | grep -qi "centos"; then
     release="centos"
-elif command -v yum > /dev/null 2>&1 && ! command -v apt > /dev/null 2>&1; then
-    release="other-redhat"
-else
-    red "不支持的系统！！"
-    exit 1
+elif lsb_release -a 2>/dev/null | grep -qi "fedora"; then
+    release="fedora"
 fi
 check_important_dependence_installed ca-certificates ca-certificates
-
 systemVersion=`lsb_release -r -s`
+if [ $release == "fedora" ]; then
+    if version_ge $systemVersion 28; then
+        redhat_version=8
+    elif version_ge $systemVersion 19; then
+        redhat_version=7
+    elif version_ge $systemVersion 12; then
+        redhat_version=6
+    else
+        redhat_version=5
+    fi
+else
+    redhat_version=$systemVersion
+fi
 install_header=0
 
 is_64bit(){
@@ -224,25 +221,30 @@ update_kernel() {
     if [ ${release} == "centos" ] || [ ${release} == "other-redhat" ]; then
         kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
         kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if version_ge $systemVersion 8; then
+        if version_ge $redhat_version 8; then
             kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
             kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
         fi
-        if ! version_ge $systemVersion 7; then
-            red "仅支持Centos 7+"
+        if ! version_ge $redhat_version 7; then
+            red "仅支持Redhat 7+ (CentOS 7+)"
             exit 1
         fi
         rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
-        if version_ge $systemVersion 8; then
-            yum -y install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
+        if version_ge $redhat_version 8; then
+            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
         else
-            yum -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
+            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
         fi
         [ ! -f "/etc/yum.repos.d/elrepo.repo" ] && red "Install elrepo failed, please check it and retry." && exit 1
-        if version_ge $systemVersion 8; then
-            yum -y --enablerepo=elrepo-kernel install kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
+        if $redhat_package_manager --help | grep -q "\-\-enablerepo="; then
+            local redhat_install_command="$redhat_package_manager -y --enablerepo=elrepo-kernel install"
         else
-            yum -y --enablerepo=elrepo-kernel install kernel-ml kernel-ml-devel
+            local redhat_install_command="$redhat_package_manager -y --enablerepo elrepo-kernel install"
+        fi
+        if version_ge $redhat_version 8; then
+            $redhat_install_command kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
+        else
+            $redhat_install_command kernel-ml kernel-ml-devel
         fi
         if [ $? -ne 0 ]; then
             red "Error: Install latest kernel failed, please check it."
@@ -373,15 +375,15 @@ remove_kernel()
     else
         local kernel_list=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
         local kernel_list_devel=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if version_ge $systemVersion 8; then
+        if version_ge $redhat_version 8; then
             local kernel_list_modules=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
             local kernel_list_core=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
         fi
-        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ] || (version_ge $systemVersion 8 && ([ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ])); then
+        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ] || (version_ge $redhat_version 8 && ([ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ])); then
             red "内核可能未安装！不卸载"
             return 1
         fi
-        if version_ge $systemVersion 8; then
+        if version_ge $redhat_version 8; then
             rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_devel_first[@]} ${kernel_list_modules_first[@]} ${kernel_list_core_first[@]}
         else
             rpm -e --nodeps ${kernel_list_first[@]} ${kernel_list_devel_first[@]}
