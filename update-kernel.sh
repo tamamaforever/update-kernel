@@ -52,6 +52,10 @@ check_important_dependence_installed()
         fi
     fi
 }
+version_ge()
+{
+    test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" == "$1"
+}
 if [[ "$(type -P apt)" ]]; then
     if [[ "$(type -P dnf)" ]] || [[ "$(type -P yum)" ]]; then
         red "同时存在apt和yum/dnf"
@@ -82,7 +86,6 @@ elif lsb_release -a 2>/dev/null | grep -qi "centos"; then
 elif lsb_release -a 2>/dev/null | grep -qi "fedora"; then
     release="fedora"
 fi
-check_important_dependence_installed ca-certificates ca-certificates
 systemVersion=`lsb_release -r -s`
 if [ $release == "fedora" ]; then
     if version_ge $systemVersion 28; then
@@ -97,7 +100,26 @@ if [ $release == "fedora" ]; then
 else
     redhat_version=$systemVersion
 fi
+check_important_dependence_installed ca-certificates ca-certificates
+
 install_header=0
+
+check_mem()
+{
+    if [ "$(cat /proc/meminfo |grep 'MemTotal' |awk '{print $3}' | tr [A-Z] [a-z])" == "kb" ]; then
+        if [ "$(cat /proc/meminfo |grep 'MemTotal' |awk '{print $2}')" -le 400000 ]; then
+            red    "检测到内存过小，更换最新版内核可能无法开机，请谨慎选择"
+            yellow "按回车键以继续或ctrl+c中止"
+            read -s
+            echo
+        fi
+    else
+        red    "请确保服务器的内存>=512MB，否则更换最新版内核可能无法开机"
+        yellow "按回车键继续或ctrl+c中止"
+        read -s
+        echo
+    fi
+}
 
 is_64bit(){
     if [ $(getconf WORD_BIT) = '32' ] && [ $(getconf LONG_BIT) = '64' ]; then
@@ -105,10 +127,6 @@ is_64bit(){
     else
         return 1
     fi
-}
-
-version_ge(){
-    test "$(echo "$@" | tr " " "\n" | sort -rV | head -n 1)" == "$1"
 }
 
 failed_version()
@@ -215,74 +233,6 @@ get_latest_version() {
         modules_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-modules" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
         deb_kernel_modules_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${modules_deb_name}"
     fi
-}
-
-update_kernel() {
-    if [ ${release} == "centos" ] || [ ${release} == "fedora" ] || [ ${release} == "other-redhat" ]; then
-        kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
-        kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if version_ge $redhat_version 8; then
-            kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
-            kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
-        fi
-        if ! version_ge $redhat_version 7; then
-            red "仅支持Redhat 7+ (CentOS 7+)"
-            exit 1
-        fi
-        rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
-        if version_ge $redhat_version 8; then
-            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
-        else
-            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
-        fi
-        [ ! -f "/etc/yum.repos.d/elrepo.repo" ] && red "Install elrepo failed, please check it and retry." && exit 1
-        if $redhat_package_manager --help | grep -q "\-\-enablerepo="; then
-            local redhat_install_command="$redhat_package_manager -y --enablerepo=elrepo-kernel install"
-        else
-            local redhat_install_command="$redhat_package_manager -y --enablerepo elrepo-kernel install"
-        fi
-        if version_ge $redhat_version 8; then
-            $redhat_install_command kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
-        else
-            $redhat_install_command kernel-ml kernel-ml-devel
-        fi
-        if [ $? -ne 0 ]; then
-            red "Error: Install latest kernel failed, please check it."
-            exit 1
-        fi
-        #[ ! -f "/boot/grub2/grub.cfg" ] && red "/boot/grub2/grub.cfg not found, please check it."
-        #grub2-set-default 0
-    else
-        ! command -v wget > /dev/null 2>&1 && ! apt -y install wget && apt update && apt -y install wget
-        get_latest_version
-        local real_deb_name=${deb_name##*/}
-        real_deb_name=${real_deb_name%%_*}"("${real_deb_name#*_}
-        real_deb_name=${real_deb_name%%_*}")"
-        tyblue "latest_kernel_version=${real_deb_name}"
-        local temp_your_kernel_version=$(uname -r)"("$(dpkg --list | grep $(uname -r) | head -n 1 | awk '{print $3}')")"
-        tyblue "your_kernel_version=${temp_your_kernel_version}"
-        if [[ "$real_deb_name" =~ "${temp_your_kernel_version}" ]]; then
-            echo
-            green "Info: Your kernel version is lastest"
-            exit 0
-        fi
-        rm -rf kernel_
-        mkdir kernel_
-        cd kernel_
-        #if ([ ${release} == "ubuntu" ] && version_ge $systemVersion 18.04) || ([ ${release} == "debian" ] && version_ge $systemVersion 10) || ([ ${release} == "deepin" ] && version_ge $systemVersion 20) ; then
-            #wget ${deb_kernel_headers_all_url}
-            #wget ${deb_kernel_headers_generic_url}
-            #install_header=1
-        #fi
-        wget ${deb_kernel_url}
-        wget ${deb_kernel_modules_url}
-        dpkg -i *
-        cd ..
-        rm -rf kernel_
-        apt -y -f install
-    fi
-    remove_kernel
-    reboot_os
 }
 
 remove_kernel()
@@ -405,6 +355,75 @@ reboot_os() {
         tyblue "Info: Reboot has been canceled..."
         exit 0
     fi
+}
+
+update_kernel() {
+    check_mem
+    if [ ${release} == "centos" ] || [ ${release} == "fedora" ] || [ ${release} == "other-redhat" ]; then
+        kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
+        kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
+        if version_ge $redhat_version 8; then
+            kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
+            kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
+        fi
+        if ! version_ge $redhat_version 7; then
+            red "仅支持Redhat 7+ (CentOS 7+)"
+            exit 1
+        fi
+        rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
+        if version_ge $redhat_version 8; then
+            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
+        else
+            $redhat_package_manager -y install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
+        fi
+        [ ! -f "/etc/yum.repos.d/elrepo.repo" ] && red "Install elrepo failed, please check it and retry." && exit 1
+        if $redhat_package_manager --help | grep -q "\-\-enablerepo="; then
+            local redhat_install_command="$redhat_package_manager -y --enablerepo=elrepo-kernel install"
+        else
+            local redhat_install_command="$redhat_package_manager -y --enablerepo elrepo-kernel install"
+        fi
+        if version_ge $redhat_version 8; then
+            $redhat_install_command kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
+        else
+            $redhat_install_command kernel-ml kernel-ml-devel
+        fi
+        if [ $? -ne 0 ]; then
+            red "Error: Install latest kernel failed, please check it."
+            exit 1
+        fi
+        #[ ! -f "/boot/grub2/grub.cfg" ] && red "/boot/grub2/grub.cfg not found, please check it."
+        #grub2-set-default 0
+    else
+        ! command -v wget > /dev/null 2>&1 && ! apt -y install wget && apt update && apt -y install wget
+        get_latest_version
+        local real_deb_name=${deb_name##*/}
+        real_deb_name=${real_deb_name%%_*}"("${real_deb_name#*_}
+        real_deb_name=${real_deb_name%%_*}")"
+        tyblue "latest_kernel_version=${real_deb_name}"
+        local temp_your_kernel_version=$(uname -r)"("$(dpkg --list | grep $(uname -r) | head -n 1 | awk '{print $3}')")"
+        tyblue "your_kernel_version=${temp_your_kernel_version}"
+        if [[ "$real_deb_name" =~ "${temp_your_kernel_version}" ]]; then
+            echo
+            green "Info: Your kernel version is lastest"
+            exit 0
+        fi
+        rm -rf kernel_
+        mkdir kernel_
+        cd kernel_
+        #if ([ ${release} == "ubuntu" ] && version_ge $systemVersion 18.04) || ([ ${release} == "debian" ] && version_ge $systemVersion 10) || ([ ${release} == "deepin" ] && version_ge $systemVersion 20) ; then
+            #wget ${deb_kernel_headers_all_url}
+            #wget ${deb_kernel_headers_generic_url}
+            #install_header=1
+        #fi
+        wget ${deb_kernel_url}
+        wget ${deb_kernel_modules_url}
+        dpkg -i *
+        cd ..
+        rm -rf kernel_
+        apt -y -f install
+    fi
+    remove_kernel
+    reboot_os
 }
 
 get_char() {
