@@ -145,9 +145,9 @@ failed_version()
 #获取可下载内核列表，包存在 kernel_list 中
 get_kernel_list()
 {
-    tyblue "Info: Getting latest kernel version...(timeout 60s)"
+    tyblue "Info: Getting latest kernel version..."
     unset kernel_list
-    local kernel_list_temp=($(timeout 60 wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/ | awk -F'\"v' '/v[0-9]/{print $2}' | cut -d '"' -f1 | cut -d '/' -f1 | sort -rV))
+    local kernel_list_temp=($(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/ | awk -F'\"v' '/v[0-9]/{print $2}' | cut -d '"' -f1 | cut -d '/' -f1 | sort -rV))
     if [ ${#kernel_list_temp[@]} -le 1 ]; then
         red "failed to get the latest kernel version"
         exit 1
