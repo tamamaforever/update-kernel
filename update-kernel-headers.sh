@@ -5,7 +5,6 @@
 # Auto install latest kernel
 #
 # System Required:  CentOS 7+, Debian8+, Ubuntu16+
-#
 
 tyblue()                           #天依蓝
 {
@@ -239,11 +238,11 @@ get_latest_version() {
 
     headers_all_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-headers.*all\.deb" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
     headers_all_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_all_deb_name}"
-    headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-headers.*generic_.*$ARCH\.deb" | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-headers.*generic_.*$ARCH\.deb" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
     headers_generic_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_generic_deb_name}"
-    image_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-image.*generic_.*$ARCH\.deb" | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    image_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-image.*generic_.*$ARCH\.deb" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
     image_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${image_deb_name}"
-    modules_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-modules.*generic_.*$ARCH\.deb" | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    modules_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-modules.*generic_.*$ARCH\.deb" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
     modules_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${modules_deb_name}"
 }
 
@@ -395,11 +394,12 @@ update_kernel() {
             local redhat_install_command="$redhat_package_manager -y --enablerepo elrepo-kernel install"
         fi
         if version_ge $redhat_version 8; then
-            $redhat_install_command kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules
+            local temp_install="kernel-ml kernel-ml-core kernel-ml-devel kernel-ml-modules"
         else
-            $redhat_install_command kernel-ml kernel-ml-devel
+            local temp_install="kernel-ml kernel-ml-devel"
         fi
-        if [ $? -ne 0 ]; then
+        [ $install_header -eq 1 ] && temp_install="kernel-ml-headers ${temp_install}"
+        if ! $redhat_install_command $temp_install; then
             red "Error: Install latest kernel failed, please check it."
             exit 1
         fi
