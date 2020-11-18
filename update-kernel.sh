@@ -2,7 +2,7 @@
 # This script is changed from https://github.com/teddysun/across/blob/master/bbr.sh
 # 本脚本改编自：https://github.com/teddysun/across/blob/master/bbr.sh
 #
-# Auto update latest kernel
+# Auto install latest kernel
 #
 # System Required:  CentOS 7+, Debian8+, Ubuntu16+
 #
@@ -97,7 +97,7 @@ case "$(uname -m)" in
         ARCH='riscv64'
         ;;
     'ppc64le')
-        ARCH='ppc64le'
+        ARCH='ppc64el'
         ;;
     's390x')
         ARCH='s390x'
@@ -427,7 +427,7 @@ update_kernel() {
         fi
         [ $install_header -eq 1 ] && local wget_temp="${headers_all_deb_url} ${headers_generic_deb_url} ${image_deb_url} ${modules_deb_url}" || local wget_temp="${image_deb_url} ${modules_deb_url}"
         if ! wget ${wget_temp}; then
-            red "错误发生！"
+            red "下载内核失败！"
             exit 1
         fi
         dpkg -i *
