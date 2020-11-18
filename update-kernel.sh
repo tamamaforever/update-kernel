@@ -2,11 +2,10 @@
 # This script is changed from https://github.com/teddysun/across/blob/master/bbr.sh
 # 本脚本改编自：https://github.com/teddysun/across/blob/master/bbr.sh
 #
-# Auto install latest kernel for TCP BBR
+# Auto update latest kernel
 #
-# System Required:  CentOS 7+, Debian7+, Ubuntu12+
+# System Required:  CentOS 7+, Debian8+, Ubuntu16+
 #
-# Copyright (C) 2016-2018 Teddysun <i@teddysun.com>
 
 tyblue()                           #天依蓝
 {
@@ -26,6 +25,13 @@ red()                              #姨妈红
 }
 
 [[ $EUID -ne 0 ]] && red "Error: This script must be run as root!" && exit 1
+
+release=""
+ARCH=""
+systemVersion=""
+redhat_version=""
+redhat_package_manager=""
+install_header=0
 
 #确保系统支持
 [[ -d "/proc/vz" ]] && red "Error: Your VPS is based on OpenVZ, which is not supported." && exit 1
@@ -74,6 +80,36 @@ else
     red "不支持的系统或apt/yum/dnf缺失"
     exit 1
 fi
+case "$(uname -m)" in
+    'i386' | 'i686')
+        ARCH='i386'
+        ;;
+    'amd64' | 'x86_64')
+        ARCH='amd64'
+        ;;
+    'armv5tel' | 'armv6l' | 'armv7' | 'armv7l')
+        ARCH='armhf'
+        ;;
+    'armv8' | 'aarch64')
+        ARCH='arm64'
+        ;;
+    'riscv64')
+        ARCH='riscv64'
+        ;;
+    'ppc64le')
+        ARCH='ppc64le'
+        ;;
+    's390x')
+        ARCH='s390x'
+        ;;
+    *)
+        if [[ "$release" == 'other-debian' ]]; then
+            echo "error: The architecture is not supported."
+            exit 1
+        fi
+        ARCH=''
+        ;;
+esac
 check_important_dependence_installed lsb-release redhat-lsb-core
 if lsb_release -a 2>/dev/null | grep -qi "ubuntu"; then
     release="ubuntu"
@@ -102,8 +138,6 @@ else
 fi
 check_important_dependence_installed ca-certificates ca-certificates
 
-install_header=0
-
 check_mem()
 {
     if [ "$(cat /proc/meminfo |grep 'MemTotal' |awk '{print $3}' | tr [A-Z] [a-z])" == "kb" ]; then
@@ -121,22 +155,11 @@ check_mem()
     fi
 }
 
-is_64bit(){
-    if [ $(getconf WORD_BIT) = '32' ] && [ $(getconf LONG_BIT) = '64' ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 failed_version()
 {
-    if is_64bit; then
-        deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
-    else
-        deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
-    fi
-    if [ -z ${deb_name} ]; then
+    local deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${1}/ | grep "href=\".*linux-image.*generic_.*$ARCH\.deb")
+    if [ -z "${deb_name}" ]; then
+        yellow "Kernel version v${1} for this arch build failed,finding next one"
         return 0
     else
         return 1
@@ -214,25 +237,14 @@ get_latest_version() {
     done
     kernel=${kernel_list[i]}
 
-    if is_64bit; then
-        headers_all_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "all" | awk -F'\">' '/.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_headers_all_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_all_deb_name}"
-        headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_headers_generic_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_generic_deb_name}"
-        deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${deb_name}"
-        modules_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-modules" | grep "generic" | awk -F'\">' '/amd64.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_modules_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${modules_deb_name}"
-    else
-        headers_all_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "all" | awk -F'\">' '/.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_headers_all_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_all_deb_name}"
-        headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-headers" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_headers_generic_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_generic_deb_name}"
-        deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-image" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${deb_name}"
-        modules_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "linux-modules" | grep "generic" | awk -F'\">' '/i386.deb/{print $2}' | cut -d'<' -f1 | head -1)
-        deb_kernel_modules_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${modules_deb_name}"
-    fi
+    headers_all_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-headers.*all\.deb" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    headers_all_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_all_deb_name}"
+    headers_generic_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-headers.*generic_.*$ARCH\.deb" | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    headers_generic_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${headers_generic_deb_name}"
+    image_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-image.*generic_.*$ARCH\.deb" | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    image_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${image_deb_name}"
+    modules_deb_name=$(wget -qO- https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/ | grep "href=\".*linux-modules.*generic_.*$ARCH\.deb" | awk -F 'href="' '{print $2}' | cut -d '"' -f1)
+    modules_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel}/${modules_deb_name}"
 }
 
 remove_kernel()
@@ -253,7 +265,7 @@ remove_kernel()
         kernel_headers_all=${kernel_headers_all##*/}
         kernel_headers=${headers_generic_deb_name%%_*}
         kernel_headers=${kernel_headers##*/}
-        kernel_image=${deb_name%%_*}
+        kernel_image=${image_deb_name%%_*}
         kernel_image=${kernel_image##*/}
         kernel_modules=${modules_deb_name%%_*}
         kernel_modules=${kernel_modules##*/}
@@ -396,13 +408,13 @@ update_kernel() {
     else
         ! command -v wget > /dev/null 2>&1 && ! apt -y install wget && apt update && apt -y install wget
         get_latest_version
-        local real_deb_name=${deb_name##*/}
-        real_deb_name=${real_deb_name%%_*}"("${real_deb_name#*_}
-        real_deb_name=${real_deb_name%%_*}")"
-        tyblue "latest_kernel_version=${real_deb_name}"
+        local latest_kernel_version=${image_deb_name##*/}
+        latest_kernel_version=${latest_kernel_version%%_*}"("${latest_kernel_version#*_}
+        latest_kernel_version=${latest_kernel_version%%_*}")"
+        tyblue "latest_kernel_version=${latest_kernel_version}"
         local temp_your_kernel_version=$(uname -r)"("$(dpkg --list | grep $(uname -r) | head -n 1 | awk '{print $3}')")"
         tyblue "your_kernel_version=${temp_your_kernel_version}"
-        if [[ "$real_deb_name" =~ "${temp_your_kernel_version}" ]]; then
+        if [[ "${latest_kernel_version}" =~ "${temp_your_kernel_version}" ]]; then
             echo
             green "Info: Your kernel version is lastest"
             exit 0
@@ -410,13 +422,14 @@ update_kernel() {
         rm -rf kernel_
         mkdir kernel_
         cd kernel_
-        #if ([ ${release} == "ubuntu" ] && version_ge $systemVersion 18.04) || ([ ${release} == "debian" ] && version_ge $systemVersion 10) || ([ ${release} == "deepin" ] && version_ge $systemVersion 20) ; then
-            #wget ${deb_kernel_headers_all_url}
-            #wget ${deb_kernel_headers_generic_url}
-            #install_header=1
-        #fi
-        wget ${deb_kernel_url}
-        wget ${deb_kernel_modules_url}
+        if ! ([ ${release} == "ubuntu" ] && version_ge $systemVersion 18.04) && ! ([ ${release} == "debian" ] && version_ge $systemVersion 10) && ! ([ ${release} == "deepin" ] && version_ge $systemVersion 20); then
+            install_header=0
+        fi
+        [ $install_header -eq 1 ] && local wget_temp="${headers_all_deb_url} ${headers_generic_deb_url} ${image_deb_url} ${modules_deb_url}" || local wget_temp="${image_deb_url} ${modules_deb_url}"
+        if ! wget ${wget_temp}; then
+            red "错误发生！"
+            exit 1
+        fi
         dpkg -i *
         cd ..
         rm -rf kernel_
@@ -439,7 +452,7 @@ echo -e "\n\n\n"
 echo "---------- System Information ----------"
 echo " Release : $(lsb_release -i -s)"
 echo " OS      : $(lsb_release -d -s)"
-echo " Arch    : $(uname -m) ($(getconf LONG_BIT) Bit)"
+echo " Arch    : $(uname -m)"
 echo " Kernel  : $(uname -r)"
 echo "----------------------------------------"
 echo " Auto install latest kernel"
