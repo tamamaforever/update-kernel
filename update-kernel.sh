@@ -6,6 +6,11 @@
 #
 # System Required:  CentOS 7+, Debian8+, Ubuntu16+
 
+#定义几个颜色
+purple()                           #基佬紫
+{
+    echo -e "\033[35;1m${@}\033[0m"
+}
 tyblue()                           #天依蓝
 {
     echo -e "\033[36;1m${@}\033[0m"
@@ -37,23 +42,25 @@ install_header=0
 check_important_dependence_installed()
 {
     if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
-        if ! dpkg -s $1 2>&1 >/dev/null; then
+        if dpkg -s $1 > /dev/null 2>&1; then
+            apt-mark manual $1
+        elif ! apt -y --no-install-recommends install $1; then
+            apt update
             if ! apt -y --no-install-recommends install $1; then
-                apt update
-                if ! apt -y --no-install-recommends install $1; then
-                    yellow "重要组件安装失败！！"
-                    red "不支持的系统！！"
-                    exit 1
-                fi
+                red "重要组件\"$1\"安装失败！！"
+                exit 1
             fi
         fi
     else
-        if ! rpm -q $2 2>&1 >/dev/null; then
-            if ! $redhat_package_manager -y install $2; then
-                yellow "重要组件安装失败！！"
-                red "不支持的系统！！"
-                exit 1
+        if ! rpm -q $2 > /dev/null 2>&1; then
+            if [ "$redhat_package_manager" == "dnf" ]; then
+                dnf mark install $2
+            else
+                yumdb set reason user $2
             fi
+        elif ! $redhat_package_manager -y install $2; then
+            red "重要组件\"$2\"安装失败！！"
+            exit 1
         fi
     fi
 }
@@ -121,7 +128,7 @@ elif lsb_release -a 2>/dev/null | grep -qi "centos"; then
 elif lsb_release -a 2>/dev/null | grep -qi "fedora"; then
     release="fedora"
 fi
-systemVersion=`lsb_release -r -s`
+systemVersion=$(lsb_release -r -s)
 if [ $release == "fedora" ]; then
     if version_ge $systemVersion 28; then
         redhat_version=8
@@ -139,8 +146,8 @@ check_important_dependence_installed ca-certificates ca-certificates
 
 check_mem()
 {
-    if [ "$(cat /proc/meminfo |grep 'MemTotal' |awk '{print $3}' | tr [A-Z] [a-z])" == "kb" ]; then
-        if [ "$(cat /proc/meminfo |grep 'MemTotal' |awk '{print $2}')" -le 400000 ]; then
+    if [ "$(cat /proc/meminfo | grep 'MemTotal' | awk '{print $3}' | tr [:upper:] [:lower:])" == "kb" ]; then
+        if [ "$(cat /proc/meminfo | grep 'MemTotal' | awk '{print $2}')" -le 400000 ]; then
             red    "检测到内存过小，更换最新版内核可能无法开机，请谨慎选择"
             yellow "按回车键以继续或ctrl+c中止"
             read -s
