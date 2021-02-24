@@ -4,7 +4,7 @@
 #
 # Auto install latest kernel
 #
-# System Required:  CentOS 7+, Debian8+, Ubuntu16+
+# System Required:  CentOS 7+ || Red Hat Enterprise Linux 7+ || All Debian base system (included Ubuntu Debian Deepin)
 
 install_header=0
 
@@ -15,7 +15,6 @@ machine=""
 release=""
 #系统版本号
 systemVersion=""
-redhat_version=""
 debian_package_manager=""
 redhat_package_manager=""
 
@@ -29,7 +28,7 @@ tyblue()                           #天依蓝
 {
     echo -e "\\033[36;1m${*}\\033[0m"
 }
-green()                            #水鸭青
+green()                            #原谅绿
 {
     echo -e "\\033[32;1m${*}\\033[0m"
 }
@@ -41,6 +40,11 @@ red()                              #姨妈红
 {
     echo -e "\\033[31;1m${*}\\033[0m"
 }
+blue()                             #蓝色
+{
+    echo -e "\\033[34;1m${*}\\033[0m"
+}
+#检查基本命令
 check_base_command()
 {
     local i
@@ -168,7 +172,7 @@ case "$(uname -m)" in
         ;;
 esac
 if ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]) && [ -z "$machine" ]; then
-    red "不支持的系统架构"
+    red "不支持的指令集"
     exit 1
 fi
 
@@ -185,23 +189,10 @@ get_system_info()
         release="deepin"
     elif [[ "$temp_release" =~ centos ]]; then
         release="centos"
-    elif [[ "$temp_release" =~ fedora ]]; then
-        release="fedora"
+    elif [[ "$temp_release" =~ (redhatenterprise|rhel) ]]; then
+        release="rhel"
     fi
     systemVersion="$(lsb_release -r -s)"
-    if [ $release == "fedora" ]; then
-        if version_ge "$systemVersion" 30; then
-            redhat_version=8
-        elif version_ge "$systemVersion" 19; then
-            redhat_version=7
-        elif version_ge "$systemVersion" 12; then
-            redhat_version=6
-        else
-            redhat_version=5
-        fi
-    else
-        redhat_version=$systemVersion
-    fi
 }
 
 #获取可下载内核列表，包存在 kernel_list 中
@@ -388,18 +379,18 @@ remove_kernel()
         kernel_list=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
         local kernel_list_devel
         kernel_list_devel=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if version_ge "$redhat_version" 8; then
+        if version_ge "$systemVersion" 8; then
             local kernel_list_modules
             kernel_list_modules=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
             local kernel_list_core
             kernel_list_core=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
         fi
-        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ] || (version_ge "$redhat_version" 8 && ([ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ])); then
+        if [ $((${#kernel_list[@]}-${#kernel_list_first[@]})) -le 0 ] || [ $((${#kernel_list_devel[@]}-${#kernel_list_devel_first[@]})) -le 0 ] || (version_ge "$systemVersion" 8 && ([ $((${#kernel_list_modules[@]}-${#kernel_list_modules_first[@]})) -le 0 ] || [ $((${#kernel_list_core[@]}-${#kernel_list_core_first[@]})) -le 0 ])); then
             red "内核可能未安装！不卸载"
             return 1
         fi
         exit_code=1
-        if version_ge "$redhat_version" 8; then
+        if version_ge "$systemVersion" 8; then
             rpm -e --nodeps "${kernel_list_first[@]}" "${kernel_list_devel_first[@]}" "${kernel_list_modules_first[@]}" "${kernel_list_core_first[@]}" && exit_code=0
         else
             rpm -e --nodeps "${kernel_list_first[@]}" "${kernel_list_devel_first[@]}" && exit_code=0
@@ -416,27 +407,28 @@ remove_kernel()
 }
 
 update_kernel() {
-    check_mem
+    [ "$redhat_package_manager" == "yum" ] && check_important_dependence_installed "" "yum-utils"
     check_important_dependence_installed lsb-release redhat-lsb-core
     get_system_info
+    if [ $release == "other-redhat" ] || ( ([ ${release} == "centos" ] || [ ${release} == "rhel" ]) && ! version_ge "$systemVersion" 7 ); then
+        red "不支持的系统"
+        yellow "仅支持CentOS 7+ 、 Red Hat Enterprise Linux 7+ 和 Debian基系统 (包含 Ubuntu Debian Deepin)"
+    fi
+    check_mem
     check_important_dependence_installed ca-certificates ca-certificates
-    if [ ${release} == "centos" ] || [ ${release} == "fedora" ] || [ ${release} == "other-redhat" ]; then
+    if [ ${release} == "centos" ] || [ ${release} == "rhel" ]; then
         kernel_list_first=($(rpm -qa |grep '^kernel-[0-9]\|^kernel-ml-[0-9]'))
         kernel_list_devel_first=($(rpm -qa | grep '^kernel-devel\|^kernel-ml-devel'))
-        if version_ge "$redhat_version" 8; then
+        if version_ge "$systemVersion" 8; then
             kernel_list_modules_first=($(rpm -qa |grep '^kernel-modules\|^kernel-ml-modules'))
             kernel_list_core_first=($(rpm -qa | grep '^kernel-core\|^kernel-ml-core'))
-        fi
-        if ! version_ge "$redhat_version" 7; then
-            red "仅支持Redhat 7+ (CentOS 7+)"
-            exit 1
         fi
         if ! rpm --import "https://www.elrepo.org/RPM-GPG-KEY-elrepo.org"; then
             red "导入elrepo公钥失败"
             yellow "按回车键继续或Ctrl+c退出"
             read -s
         fi
-        if version_ge "$redhat_version" 8; then
+        if version_ge "$systemVersion" 8; then
             local elrepo_url="https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm"
         else
             local elrepo_url="https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm"
@@ -451,7 +443,7 @@ update_kernel() {
         else
             local redhat_install_command=("$redhat_package_manager" "-y" "--enablerepo" "elrepo-kernel" "install")
         fi
-        if version_ge "$redhat_version" 8; then
+        if version_ge "$systemVersion" 8; then
             local temp_install=("kernel-ml" "kernel-ml-core" "kernel-ml-devel" "kernel-ml-modules")
         else
             local temp_install=("kernel-ml" "kernel-ml-devel")
