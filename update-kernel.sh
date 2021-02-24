@@ -413,6 +413,7 @@ update_kernel() {
     if [ $release == "other-redhat" ] || ( ([ ${release} == "centos" ] || [ ${release} == "rhel" ]) && ! version_ge "$systemVersion" 7 ); then
         red "不支持的系统"
         yellow "仅支持CentOS 7+ 、 Red Hat Enterprise Linux 7+ 和 Debian基系统 (包含 Ubuntu Debian Deepin)"
+        exit 1
     fi
     check_mem
     check_important_dependence_installed ca-certificates ca-certificates
