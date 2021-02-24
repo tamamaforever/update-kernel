@@ -267,7 +267,7 @@ get_latest_version() {
         if grep -q "href=\".*linux-image.*generic_.*$machine\\.deb" "$temp_file"; then
             break
         else
-            yellow "Kernel version v${temp_file} for this arch build failed,finding next one"
+            yellow "Kernel version v${kernel_list[$i]} for this arch build failed,finding next one"
         fi
     done
     headers_all_deb_name="$(grep "href=\".*linux-headers.*all\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
