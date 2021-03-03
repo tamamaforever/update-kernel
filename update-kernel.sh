@@ -66,29 +66,36 @@ version_ge()
 #安装单个重要依赖
 check_important_dependence_installed()
 {
+    local temp_exit_code=1
     if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
         if dpkg -s "$1" > /dev/null 2>&1; then
-            apt-mark manual "$1"
-        elif ! $debian_package_manager -y --no-install-recommends install "$1"; then
+            apt-mark manual "$1" && temp_exit_code=0
+        elif $debian_package_manager -y --no-install-recommends install "$1"; then
+            temp_exit_code=0
+        else
             $debian_package_manager update
-            if ! $debian_package_manager -y --no-install-recommends install "$1"; then
-                red "重要组件\"$1\"安装失败！！"
-                yellow "按回车键继续或者Ctrl+c退出"
-                read -s
-            fi
+            $debian_package_manager -y -f install
+            $debian_package_manager -y --no-install-recommends install "$1" && temp_exit_code=0
         fi
     else
         if rpm -q "$2" > /dev/null 2>&1; then
             if [ "$redhat_package_manager" == "dnf" ]; then
-                dnf mark install "$2"
+                dnf mark install "$2" && temp_exit_code=0
             else
-                yumdb set reason user "$2"
+                yumdb set reason user "$2" && temp_exit_code=0
             fi
-        elif ! $redhat_package_manager -y install "$2"; then
-            red "重要组件\"$2\"安装失败！！"
-            yellow "按回车键继续或者Ctrl+c退出"
-            read -s
+        elif $redhat_package_manager -y install "$2"; then
+            temp_exit_code=0
         fi
+    fi
+    if [ $temp_exit_code -ne 0 ]; then
+        if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
+            red "重要组件\"$1\"安装失败！！"
+        else
+            red "重要组件\"$2\"安装失败！！"
+        fi
+        yellow "按回车键继续或者Ctrl+c退出"
+        read -s
     fi
 }
 ask_if()
@@ -102,26 +109,12 @@ ask_if()
     [ $choice == y ] && return 0
     return 1
 }
-check_mem()
-{
-    if (($(free -m | sed -n 2p | awk '{print $2}')<300)); then
-        red    "检测到内存小于300M，更换内核可能无法开机，请谨慎选择"
-        yellow "按回车键以继续或ctrl+c中止"
-        read -s
-        echo
-    fi
-}
-
 
 if [[ -d "/proc/vz" ]]; then
     red "Error: Your VPS is based on OpenVZ, which is not supported."
     exit 1
 fi
 check_base_command
-if [ "$EUID" != "0" ]; then
-    red "请用root用户运行此脚本！！"
-    exit 1
-fi
 if [[ "$(type -P apt)" ]]; then
     if [[ "$(type -P dnf)" ]] || [[ "$(type -P yum)" ]]; then
         red "同时存在apt和yum/dnf"
@@ -175,6 +168,10 @@ if ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepi
     red "不支持的指令集"
     exit 1
 fi
+if [ "$EUID" != "0" ]; then
+    red "请用root用户运行此脚本！！"
+    exit 1
+fi
 
 #获取系统版本信息
 get_system_info()
@@ -193,6 +190,16 @@ get_system_info()
         release="rhel"
     fi
     systemVersion="$(lsb_release -r -s)"
+}
+
+check_mem()
+{
+    if (($(free -m | sed -n 2p | awk '{print $2}')<300)); then
+        red    "检测到内存小于300M，更换内核可能无法开机，请谨慎选择"
+        yellow "按回车键以继续或ctrl+c中止"
+        read -s
+        echo
+    fi
 }
 
 #获取可下载内核列表，包存在 kernel_list 中
