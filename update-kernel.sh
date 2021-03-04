@@ -266,7 +266,11 @@ get_latest_version() {
     local i
     for ((i=0;i<${#kernel_list[@]};i++))
     do
-        if ! wget -O "$temp_file" "https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/"; then
+        if [[ "${kernel_list[$i]}" =~ dontuse ]]; then
+            yellow "Skip the dontuse version v${kernel_list[$i]}"
+            continue
+        fi
+        if ! wget -q -O "$temp_file" "https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/"; then
             red "获取内核版本失败"
             rm "$temp_file"
             return 1
