@@ -267,7 +267,7 @@ get_latest_version() {
     for ((i=0;i<${#kernel_list[@]};i++))
     do
         if [[ "${kernel_list[$i]}" =~ dontuse ]]; then
-            yellow "Skip the dontuse version v${kernel_list[$i]}"
+            yellow "Skip the don't use version v${kernel_list[$i]}"
             continue
         fi
         if ! wget -q -O "$temp_file" "https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/"; then
