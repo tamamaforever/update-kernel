@@ -415,6 +415,12 @@ remove_kernel()
 }
 
 update_kernel() {
+    if ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]) && ! version_ge "$(dpkg --list | grep '^[ '$'\t]*ii[ '$'\t][ '$'\t]*linux-base[ '$'\t]' | awk '{print $3}')" "4.5ubuntu1~16.04.1"; then
+        red    "系统版本太低！"
+        yellow "请更换新系统或使用xanmod内核"
+        tyblue "xanmod内核安装脚本：https://github.com/kirin10000/xanmod-install"
+        exit 1
+    fi
     [ "$redhat_package_manager" == "yum" ] && check_important_dependence_installed "" "yum-utils"
     check_important_dependence_installed lsb-release redhat-lsb-core
     get_system_info
