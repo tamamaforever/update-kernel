@@ -522,7 +522,7 @@ update_kernel() {
         for i in "${!check_temp[@]}"
         do
             mkdir _check_temp
-            if ! dpkg -x "$i" _check_temp; then
+            if ! dpkg -x "${check_temp[$i]}" _check_temp; then
                 cd ..
                 rm -rf kernel_
                 red "当前系统dpkg版本过低，不支持解压最新内核安装包"
