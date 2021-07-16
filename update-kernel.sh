@@ -289,12 +289,16 @@ get_latest_version() {
     done
     headers_all_deb_name="$(grep "href=\".*linux-headers.*all\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
     headers_all_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${headers_all_deb_name}"
+    real_headers_all_deb_name="${headers_all_deb_name##*/}"
     headers_generic_deb_name="$(grep "href=\".*linux-headers.*generic_.*$machine\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
     headers_generic_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${headers_generic_deb_name}"
+    real_headers_generic_deb_name="${headers_generic_deb_name##*/}"
     image_deb_name="$(grep "href=\".*linux-image.*generic_.*$machine\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
     image_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${image_deb_name}"
+    real_image_deb_name="${image_deb_name##*/}"
     modules_deb_name="$(grep "href=\".*linux-modules.*generic_.*$machine\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
     modules_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${modules_deb_name}"
+    real_modules_deb_name="${modules_deb_name##*/}"
     rm "$temp_file"
 }
 
@@ -495,14 +499,34 @@ update_kernel() {
         if ! ([ ${release} == "ubuntu" ] && version_ge "$systemVersion" 18.04) && ! ([ ${release} == "debian" ] && version_ge "$systemVersion" 10) && ! ([ ${release} == "deepin" ] && version_ge "$systemVersion" 20); then
             install_headers=0
         fi
-        local wget_temp=("${image_deb_url}" "${modules_deb_url}")
-        [ $install_headers -eq 1 ] && wget_temp+=("${headers_all_deb_url}" "${headers_generic_deb_url}")
-        if ! wget "${wget_temp[@]}"; then
+        if ! wget -O "$real_image_deb_name" "$image_deb_url" || ! wget -O "$real_modules_deb_name" "$modules_deb_url"; then
             cd ..
             rm -rf kernel_
             red "下载内核失败！"
             exit 1
         fi
+        if [ $install_headers -eq 1 ]; then
+            if ! wget -O "$real_headers_all_deb_name" "$headers_all_deb_url" || ! wget -O "$real_headers_generic_deb_name" "$headers_generic_deb_url"; then
+                cd ..
+                rm -rf kernel_
+                red "下载内核失败！"
+                exit 1
+            fi
+        fi
+        local check_temp=("$real_image_deb_name" "$real_modules_deb_name")
+        [ $install_headers -eq 1 ] && check_temp+=("$real_headers_all_deb_name" "$real_headers_generic_deb_name")
+        for i in "${!check_temp[@]}"
+        do
+            mkdir _check_temp
+            if ! dpkg -x "${check_temp[$i]}" _check_temp; then
+                cd ..
+                rm -rf kernel_
+                red "当前系统dpkg版本过低，不支持解压最新内核安装包"
+                yellow "请使用新系统"
+                exit 1
+            fi
+            rm -rf _check_temp
+        done
         if ! dpkg -i ./*; then
             apt -y -f install
             cd ..
