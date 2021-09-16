@@ -48,7 +48,7 @@ blue()                             #蓝色
 check_base_command()
 {
     local i
-    local temp_command_list=('bash' 'true' 'false' 'exit' 'echo' 'test' 'free' 'sort' 'sed' 'awk' 'grep' 'cut' 'cd' 'rm' 'cp' 'mv' 'head' 'tail' 'uname' 'tr' 'md5sum' 'tar' 'cat' 'find' 'type' 'command' 'kill' 'pkill' 'wc' 'ls' 'mktemp')
+    local temp_command_list=('bash' 'true' 'false' 'exit' 'echo' 'test' 'sort' 'sed' 'awk' 'grep' 'cut' 'cd' 'rm' 'cp' 'mv' 'head' 'tail' 'uname' 'tr' 'md5sum' 'cat' 'find' 'type' 'command' 'wc' 'ls' 'mktemp' 'swapon' 'swapoff' 'mkswap' 'chmod' 'chown' 'export')
     for i in ${!temp_command_list[@]}
     do
         if ! command -V "${temp_command_list[$i]}" > /dev/null; then
@@ -64,12 +64,19 @@ version_ge()
     test "$(echo -e "$1\\n$2" | sort -rV | head -n 1)" == "$1"
 }
 #安装单个重要依赖
-check_important_dependence_installed()
+test_important_dependence_installed()
 {
     local temp_exit_code=1
     if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
-        if dpkg -s "$1" > /dev/null 2>&1; then
-            apt-mark manual "$1" && temp_exit_code=0
+        if LANG="en_US.UTF-8" LANGUAGE="en_US:en" dpkg -s "$1" 2>/dev/null | grep -qi 'status[ '$'\t]*:[ '$'\t]*install[ '$'\t]*ok[ '$'\t]*installed[ '$'\t]*$'; then
+            if LANG="en_US.UTF-8" LANGUAGE="en_US:en" apt-mark manual "$1" | grep -qi 'set[ '$'\t]*to[ '$'\t]*manually[ '$'\t]*installed'; then
+                temp_exit_code=0
+            else
+                red "安装依赖 \"$1\" 出错！"
+                green  "欢迎进行Bug report(https://github.com/kirin10000/Xray-script/issues)，感谢您的支持"
+                yellow "按回车键继续或者Ctrl+c退出"
+                read -s
+            fi
         elif $debian_package_manager -y --no-install-recommends install "$1"; then
             temp_exit_code=0
         else
@@ -88,7 +95,11 @@ check_important_dependence_installed()
             temp_exit_code=0
         fi
     fi
-    if [ $temp_exit_code -ne 0 ]; then
+    return $temp_exit_code
+}
+check_important_dependence_installed()
+{
+    if ! test_important_dependence_installed "$@"; then
         if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
             red "重要组件\"$1\"安装失败！！"
         else
@@ -96,6 +107,19 @@ check_important_dependence_installed()
         fi
         yellow "按回车键继续或者Ctrl+c退出"
         read -s
+    fi
+}
+# 检查procps是否安装
+check_procps_installed()
+{
+    if [ $release == "centos" ] || [ $release == "rhel" ] || [ $release == "fedora" ] || [ $release == "other-redhat" ]; then
+        if ! test_important_dependence_installed "" "procps-ng" && ! test_important_dependence_installed "" "procps"; then
+            red '重要组件"procps"安装失败！！'
+            yellow "按回车键继续或者Ctrl+c退出"
+            read -s
+        fi
+    else
+        check_important_dependence_installed "procps" ""
     fi
 }
 ask_if()
@@ -437,6 +461,7 @@ update_kernel() {
         yellow "仅支持CentOS 7+ 、 Red Hat Enterprise Linux 7+ 和 Debian基系统 (包含 Ubuntu Debian Deepin)"
         exit 1
     fi
+    check_procps_installed
     check_mem
     check_important_dependence_installed ca-certificates ca-certificates
     if [ ${release} == "centos" ] || [ ${release} == "rhel" ]; then
@@ -484,6 +509,7 @@ update_kernel() {
         #grub2-set-default 0
     else
         check_important_dependence_installed wget wget
+        check_important_dependence_installed initramfs-tools
         get_latest_version
         local latest_kernel_version="${image_deb_name##*/}"
         latest_kernel_version="${latest_kernel_version%%_*}(${latest_kernel_version#*_}"
