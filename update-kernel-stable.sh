@@ -109,6 +109,45 @@ check_important_dependence_installed()
         read -s
     fi
 }
+#安装依赖
+install_dependence()
+{
+    if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
+        if ! $debian_package_manager -y --no-install-recommends install "$@"; then
+            $debian_package_manager update
+            $debian_package_manager -y -f install
+            if ! $debian_package_manager -y --no-install-recommends install "$@"; then
+                yellow "依赖安装失败！！"
+                green  "欢迎进行Bug report(https://github.com/kirin10000/Xray-script/issues)，感谢您的支持"
+                yellow "按回车键继续或者Ctrl+c退出"
+                read -s
+            fi
+        fi
+    else
+        if $redhat_package_manager --help | grep -q "\\-\\-enablerepo="; then
+            local temp_redhat_install="$redhat_package_manager -y --enablerepo="
+        else
+            local temp_redhat_install="$redhat_package_manager -y --enablerepo "
+        fi
+        if ! $redhat_package_manager -y install "$@"; then
+            if $temp_redhat_install'epel' install "$@"; then
+                return 0
+            fi
+            if [ $release == "centos" ] && version_ge "$systemVersion" 8;then
+                if $temp_redhat_install"epel,powertools" install "$@" || $temp_redhat_install"epel,PowerTools" install "$@"; then
+                    return 0
+                fi
+            fi
+            if $temp_redhat_install'*' install "$@"; then
+                return 0
+            fi
+            yellow "依赖安装失败！！"
+            green  "欢迎进行Bug report(https://github.com/kirin10000/Xray-script/issues)，感谢您的支持"
+            yellow "按回车键继续或者Ctrl+c退出"
+            read -s
+        fi
+    fi
+}
 # 检查procps是否安装
 check_procps_installed()
 {
@@ -192,11 +231,31 @@ if ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepi
     red "不支持的指令集"
     exit 1
 fi
-if ([ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]) && ! version_ge "$(dpkg --list | grep '^[ '$'\t]*ii[ '$'\t][ '$'\t]*linux-base[ '$'\t]' | awk '{print $3}')" "4.5ubuntu1~16.04.1"; then
-    red    "系统版本太低！"
-    yellow "请更换新系统或使用xanmod内核"
-    tyblue "xanmod内核安装脚本：https://github.com/kirin10000/xanmod-install"
-    exit 1
+if [ $release == "ubuntu" ] || [ $release == "debian" ] || [ $release == "deepin" ] || [ $release == "other-debian" ]; then
+    if ! dpkg-deb --help | grep -qw "zstd"; then
+        red    "当前系统dpkg不支持解压zst包，不支持安装此内核！"
+        green  "请更新系统，或选择使用其他系统，或选择安装xanmod内核"
+        exit 1
+    fi
+    check_important_dependence_installed "linux-base" ""
+    if ! version_ge "$(dpkg --list | grep '^[ '$'\t]*ii[ '$'\t][ '$'\t]*linux-base[ '$'\t]' | awk '{print $3}')" "4.5ubuntu1~16.04.1"; then
+        install_dependence linux-base
+        if ! version_ge "$(dpkg --list | grep '^[ '$'\t]*ii[ '$'\t][ '$'\t]*linux-base[ '$'\t]' | awk '{print $3}')" "4.5ubuntu1~16.04.1"; then
+            if ! $debian_package_manager update; then
+                red "$debian_package_manager update出错"
+                green  "欢迎进行Bug report(https://github.com/kirin10000/Xray-script/issues)，感谢您的支持"
+                yellow "按回车键继续或者Ctrl+c退出"
+                read -s
+            fi
+            install_dependence linux-base
+        fi
+    fi
+    if ! version_ge "$(dpkg --list | grep '^[ '$'\t]*ii[ '$'\t][ '$'\t]*linux-base[ '$'\t]' | awk '{print $3}')" "4.5ubuntu1~16.04.1"; then
+        red    "系统版本太低！"
+        yellow "请更换新系统或使用xanmod内核"
+        tyblue "xanmod内核安装脚本：https://github.com/kirin10000/xanmod-install"
+        exit 1
+    fi
 fi
 if [ "$EUID" != "0" ]; then
     red "请用root用户运行此脚本！！"
