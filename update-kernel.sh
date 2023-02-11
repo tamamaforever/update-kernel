@@ -6,7 +6,7 @@
 #
 # System Required:  CentOS 7+ || Red Hat Enterprise Linux 7+ || All Debian base system (included Ubuntu Debian Deepin)
 
-install_headers=0
+install_headers=1
 
 #系统信息
 #指令集
@@ -364,22 +364,22 @@ get_latest_version() {
             rm "$temp_file"
             return 1
         fi
-        if grep -q "href=\".*linux-image.*generic_.*$machine\\.deb" "$temp_file"; then
+        if grep -q "href=\".*linux-image.*generic_.*$machine\\.deb\"" "$temp_file"; then
             break
         else
             yellow "Kernel version v${kernel_list[$i]} for this arch build failed,finding next one"
         fi
     done
-    headers_all_deb_name="$(grep "href=\".*linux-headers.*all\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
+    headers_all_deb_name="$(grep "href=\".*linux-headers.*all\\.deb\"" "$temp_file" | awk -F 'href="' '{print $2}' | cut -d '"' -f1 | sort -rV | head -n 1)"
     headers_all_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${headers_all_deb_name}"
     real_headers_all_deb_name="${headers_all_deb_name##*/}"
-    headers_generic_deb_name="$(grep "href=\".*linux-headers.*generic_.*$machine\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
+    headers_generic_deb_name="$(grep "href=\".*linux-headers.*generic_.*$machine\\.deb\"" "$temp_file" | awk -F 'href="' '{print $2}' | cut -d '"' -f1 | sort -rV | head -n 1)"
     headers_generic_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${headers_generic_deb_name}"
     real_headers_generic_deb_name="${headers_generic_deb_name##*/}"
-    image_deb_name="$(grep "href=\".*linux-image.*generic_.*$machine\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
+    image_deb_name="$(grep "href=\".*linux-image.*generic_.*$machine\\.deb\"" "$temp_file" | awk -F 'href="' '{print $2}' | cut -d '"' -f1 | sort -rV | head -n 1)"
     image_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${image_deb_name}"
     real_image_deb_name="${image_deb_name##*/}"
-    modules_deb_name="$(grep "href=\".*linux-modules.*generic_.*$machine\\.deb" "$temp_file" | head -1 | awk -F 'href="' '{print $2}' | cut -d '"' -f1)"
+    modules_deb_name="$(grep "href=\".*linux-modules.*generic_.*$machine\\.deb\"" "$temp_file" | awk -F 'href="' '{print $2}' | cut -d '"' -f1 | sort -rV | head -n 1)"
     modules_deb_url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${kernel_list[$i]}/${modules_deb_name}"
     real_modules_deb_name="${modules_deb_name##*/}"
     rm "$temp_file"
