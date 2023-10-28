@@ -6,7 +6,7 @@
 #
 # System Required:  CentOS 7+ || Red Hat Enterprise Linux 7+ || All Debian base system (included Ubuntu Debian Deepin)
 
-install_headers=1
+install_headers=0
 
 #系统信息
 #指令集
